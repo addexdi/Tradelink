@@ -122,6 +122,55 @@ TradeLink Global is delivered in four phases, each building on the previous to p
 
 ---
 
+## Phase Dependencies
+
+Each phase builds on the completion of the prior phase:
+
+```
+Phase 1 (MVP)
+    └── Phase 2 (Trust & Finance)
+            └── Phase 3 (Logistics)
+                    └── Phase 4 (Optimization)
+```
+
+Specific prerequisites:
+
+| Phase | Prerequisites |
+|---|---|
+| Phase 2 | User accounts and roles (Phase 1) must be stable |
+| Phase 3 | Payment processing (Phase 2) must be live and stable |
+| Phase 4 | Order + payment data volume sufficient for ML training (Phase 2+3) |
+
+---
+
+## Indicative Timelines
+
+| Phase | Estimated Duration | Notes |
+|---|---|---|
+| Phase 1 — MVP | 12 weeks | Assumes a cross-functional team of 6–8 |
+| Phase 2 — Trust & Finance | 10 weeks | Requires legal review of KYB flows per market |
+| Phase 3 — Logistics | 8 weeks | Dependent on 3PL API availability and SLA |
+| Phase 4 — Optimization | Ongoing | AI/ML features ship incrementally |
+
+Timelines are indicative. Actual delivery schedules are tracked in the project management tool.
+
+---
+
+## Team Structure Per Phase
+
+| Role | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
+|---|---|---|---|---|
+| Backend Engineers | 3 | 3 | 2 | 2 |
+| Frontend Engineers | 2 | 1 | 1 | 2 |
+| Mobile Engineer | — | — | 1 | 2 |
+| DevOps / Platform | 1 | 1 | 1 | 1 |
+| QA Engineer | 1 | 1 | 1 | 1 |
+| Data / ML Engineer | — | — | — | 2 |
+| Product Manager | 1 | 1 | 1 | 1 |
+| UX Designer | 1 | 1 | — | 1 |
+
+---
+
 ## Versioning
 
 Releases follow **Semantic Versioning** (`MAJOR.MINOR.PATCH`):

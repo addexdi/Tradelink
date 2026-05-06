@@ -12,12 +12,17 @@
 1. [Introduction](#1-introduction)
 2. [System Overview](#2-system-overview)
 3. [Functional Requirements](#3-functional-requirements)
-4. [Technical Stack](#4-technical-stack)
-5. [System Architecture](#5-system-architecture)
-6. [Database Schema](#6-database-schema)
-7. [Security Design](#7-security-design)
-8. [Roadmap](#8-roadmap)
-9. [Risk Mitigation](#9-risk-mitigation)
+4. [Non-Functional Requirements](#4-non-functional-requirements)
+5. [Technical Stack](#5-technical-stack)
+6. [System Architecture](#6-system-architecture)
+7. [Key Data Flows](#7-key-data-flows)
+8. [Error Handling Strategy](#8-error-handling-strategy)
+9. [Database Schema](#9-database-schema)
+10. [Security Design](#10-security-design)
+11. [Roadmap](#11-roadmap)
+12. [Risk Mitigation](#12-risk-mitigation)
+13. [Glossary](#13-glossary)
+14. [Revision History](#14-revision-history)
 
 ---
 
@@ -150,7 +155,55 @@ RFQ Submitted → Quotation Received → Order Confirmed
 
 ---
 
-## 4. Technical Stack
+## 4. Non-Functional Requirements
+
+### 4.1 Performance
+
+| Metric | Target |
+|---|---|
+| API response time (p95) | < 200 ms for read endpoints |
+| API response time (p99) | < 500 ms for all endpoints |
+| Product search latency | < 300 ms at p95 |
+| WebSocket message delivery | < 100 ms end-to-end on same continent |
+| Concurrent users supported | ≥ 10,000 without degradation |
+| Throughput | ≥ 1,000 API requests/second |
+
+### 4.2 Availability and Reliability
+
+| Metric | Target |
+|---|---|
+| Platform uptime SLA | 99.9% (≤ 8.7 hours downtime/year) |
+| RTO (Recovery Time Objective) | < 1 hour for any single-component failure |
+| RPO (Recovery Point Objective) | < 5 minutes for PostgreSQL data |
+| Deployment downtime | Zero-downtime blue/green deployments |
+
+### 4.3 Scalability
+
+- The system must scale horizontally to 5× baseline load within 10 minutes via auto-scaling.
+- Database design must support 10 million product listings and 1 million active users without architectural change.
+
+### 4.4 Security
+
+- Zero critical or high CVEs in production at any time.
+- All user data encrypted at rest and in transit.
+- Full audit trail for all financial and verification events.
+
+### 4.5 Maintainability
+
+- Code test coverage ≥ 80% for all business logic.
+- All public API endpoints documented in [API.md](API.md).
+- All schema changes delivered via versioned migrations.
+- Mean time to deploy a hotfix to production: < 30 minutes.
+
+### 4.6 Usability and Accessibility
+
+- Web application meets **WCAG 2.1 Level AA** accessibility standards.
+- Marketplace search returns relevant results with ≥ 80% user satisfaction in usability testing.
+- Mobile app supports Android 11+ and iOS 15+.
+
+---
+
+## 5. Technical Stack
 
 | Layer | Technology | Justification |
 |---|---|---|
@@ -168,9 +221,9 @@ RFQ Submitted → Quotation Received → Order Confirmed
 
 ---
 
-## 5. System Architecture
+## 6. System Architecture
 
-### 5.1 Deployment Architecture
+### 6.1 Deployment Architecture
 
 All services are containerized with Docker and orchestrated via Kubernetes (or AWS ECS) for horizontal scalability.
 
@@ -182,7 +235,7 @@ Internet → CDN → Load Balancer → API Servers (auto-scaled)
                          Background Workers (notifications, KYB)
 ```
 
-### 5.2 API Design Principles
+### 6.2 API Design Principles
 
 - **RESTful** conventions (resource-based URLs, HTTP verbs, standard status codes).
 - **JSON** request and response bodies.
@@ -191,7 +244,7 @@ Internet → CDN → Load Balancer → API Servers (auto-scaled)
 
 See [API Overview](API.md) for the full endpoint reference.
 
-### 5.3 Scalability Considerations
+### 6.3 Scalability Considerations
 
 - Stateless API servers allow horizontal scaling behind a load balancer.
 - Read replicas for PostgreSQL reduce load on the primary node.
@@ -200,7 +253,112 @@ See [API Overview](API.md) for the full endpoint reference.
 
 ---
 
-## 6. Database Schema
+## 7. Key Data Flows
+
+### 7.1 Buyer Registration and Login
+
+```
+Client → POST /auth/register → Validate input → Hash password (bcrypt)
+       → Insert user row → Issue JWT pair → Return tokens to client
+```
+
+### 7.2 Product Search
+
+```
+Client → GET /products?q=shea&category=Agriculture
+       → API validates query params
+       → Query PostgreSQL full-text index (with Redis cache check first)
+       → Paginate and enrich results with supplier verification badge
+       → Return JSON response
+```
+
+### 7.3 RFQ-to-Order Flow
+
+```
+Buyer → POST /orders (RFQ with product list)
+      → API creates order (status: pending) + order_items rows
+      → Notify supplier (WebSocket push + email)
+      → Supplier responds → PATCH /orders/:id/status (status: quoted, total_amount)
+      → Buyer reviews → PATCH /orders/:id/status (status: confirmed)
+      → Buyer pays → Payment gateway webhook → PATCH status: paid
+      → Supplier ships → PATCH status: shipped
+      → Buyer confirms → PATCH status: completed
+      → System prompts buyer for rating
+```
+
+### 7.4 KYB Verification Flow
+
+```
+Supplier → POST /organizations (business details + documents)
+         → Documents uploaded to S3 (pre-signed URL)
+         → Admin notified of new KYB submission
+         → Admin reviews in dashboard → PATCH /organizations/:id/verify
+         → Supplier notified of decision (email + in-app)
+         → verification_level updated on users row
+```
+
+### 7.5 Real-Time Messaging
+
+```
+Client A → wss://api.tradelinkglobal.com/ws (JWT auth)
+         → Sends message event
+         → Server persists to MongoDB
+         → Server pushes message:new event to Client B's WebSocket
+         → Client B marks as read → Sends message:read event
+         → Server updates read_at in MongoDB
+```
+
+---
+
+## 8. Error Handling Strategy
+
+### 8.1 Standard Error Envelope
+
+All error responses follow a consistent JSON structure:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request body is invalid.",
+    "details": [
+      { "field": "email", "issue": "Must be a valid email address." }
+    ],
+    "request_id": "req_abc123"
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `code` | Machine-readable error code (uppercase snake case) |
+| `message` | Human-readable summary |
+| `details` | Array of field-level validation errors (optional) |
+| `request_id` | Correlation ID for log tracing |
+
+### 8.2 Error Code Reference
+
+| HTTP Status | Code | Meaning |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Request body or query params failed schema validation |
+| 401 | `UNAUTHORIZED` | Missing or expired authentication token |
+| 403 | `FORBIDDEN` | Authenticated user lacks permission for this action |
+| 404 | `NOT_FOUND` | Requested resource does not exist |
+| 409 | `CONFLICT` | Duplicate resource or invalid state transition |
+| 422 | `UNPROCESSABLE` | Valid request but business rule violation |
+| 429 | `RATE_LIMITED` | Too many requests; includes `Retry-After` header |
+| 500 | `INTERNAL_ERROR` | Unexpected server error; use `request_id` for support |
+
+### 8.3 Error Handling Principles
+
+- All errors are logged with the `request_id`, user ID (if authenticated), endpoint, and timestamp.
+- Internal error details (stack traces, database errors) are **never** exposed to API consumers.
+- Unhandled promise rejections and uncaught exceptions trigger an alert and graceful shutdown.
+- Idempotency keys prevent duplicate order/payment creation on client retry.
+
+---
+
+## 9. Database Schema
 
 See [Database Schema](DATABASE_SCHEMA.md) for the full relational and document store schemas.
 
@@ -211,14 +369,20 @@ See [Database Schema](DATABASE_SCHEMA.md) for the full relational and document s
 | `users` | Authentication and profile data |
 | `organizations` | Business entity and KYB verification |
 | `products` | Supplier product listings |
+| `product_images` | Product listing images |
 | `orders` | Order lifecycle and status tracking |
 | `order_items` | Line items within an order |
-| `messages` | Real-time chat messages (MongoDB) |
+| `order_status_history` | Immutable audit trail of status changes |
+| `payments` | Payment transaction records |
+| `disputes` | Buyer-initiated dispute cases |
+| `notifications` | In-app notification feed |
 | `ratings` | Buyer reviews for suppliers |
+| `messages` | Real-time chat messages (MongoDB) |
+| `audit_logs` | Security and compliance event log (MongoDB) |
 
 ---
 
-## 7. Security Design
+## 10. Security Design
 
 See [Security Design](SECURITY.md) for the full security specification.
 
@@ -235,7 +399,7 @@ See [Security Design](SECURITY.md) for the full security specification.
 
 ---
 
-## 8. Roadmap
+## 11. Roadmap
 
 See [Roadmap](ROADMAP.md) for the full phased delivery plan.
 
@@ -248,7 +412,7 @@ See [Roadmap](ROADMAP.md) for the full phased delivery plan.
 
 ---
 
-## 9. Risk Mitigation
+## 12. Risk Mitigation
 
 | Risk | Likelihood | Impact | Mitigation Strategy |
 |---|---|---|---|
@@ -259,3 +423,38 @@ See [Roadmap](ROADMAP.md) for the full phased delivery plan.
 | Regulatory non-compliance | Medium | High | Jurisdiction-specific KYB flows; legal review per market |
 | DDoS attacks | Medium | Medium | CDN-level rate limiting; AWS Shield or GCP Cloud Armor |
 | Scalability bottlenecks | Low | Medium | Auto-scaling groups; database read replicas; caching |
+
+---
+
+## 13. Glossary
+
+| Term | Definition |
+|---|---|
+| **B2B** | Business-to-Business — trade between companies, not individual consumers |
+| **MOQ** | Minimum Order Quantity — the smallest number of units a supplier will sell in one order |
+| **RFQ** | Request for Quotation — a formal buyer request for a price and terms from a supplier |
+| **KYB** | Know Your Business — verification process to confirm a business's legal identity and legitimacy |
+| **3PL** | Third-Party Logistics — an outsourced provider of shipping, warehousing, and fulfilment services |
+| **JWT** | JSON Web Token — a compact, URL-safe means of representing claims between two parties |
+| **RBAC** | Role-Based Access Control — restricting system access based on the user's role |
+| **TLS** | Transport Layer Security — cryptographic protocol for securing data in transit |
+| **AES-256** | Advanced Encryption Standard with a 256-bit key — symmetric encryption standard |
+| **TOTP** | Time-based One-Time Password — MFA method using a rotating 6-digit code |
+| **GMV** | Gross Merchandise Value — total value of goods transacted on the platform |
+| **SLA** | Service Level Agreement — commitment to a minimum level of service uptime or performance |
+| **RTO** | Recovery Time Objective — maximum acceptable time to restore service after an outage |
+| **RPO** | Recovery Point Objective — maximum acceptable data loss measured in time |
+| **CDN** | Content Delivery Network — geographically distributed network for fast asset delivery |
+| **PCI-DSS** | Payment Card Industry Data Security Standard — security standard for handling card data |
+| **NDPR** | Nigeria Data Protection Regulation — Nigerian personal data privacy law |
+| **GDPR** | General Data Protection Regulation — EU personal data privacy law |
+| **SIEM** | Security Information and Event Management — system for real-time security monitoring |
+| **WAL** | Write-Ahead Log — PostgreSQL mechanism for durability and point-in-time recovery |
+
+---
+
+## 14. Revision History
+
+| Version | Date | Author | Changes |
+|---|---|---|---|
+| 1.0 | 2026-05-06 | TradeLink Engineering | Initial document created |

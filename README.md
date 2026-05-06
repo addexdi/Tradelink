@@ -25,6 +25,8 @@ TradeLink Global is a B2B marketplace platform designed to facilitate secure and
 | [API Overview](docs/API.md) | REST API design and endpoint reference |
 | [Security Design](docs/SECURITY.md) | Authentication, encryption, and threat mitigation |
 | [Roadmap](docs/ROADMAP.md) | Phased development and feature rollout plan |
+| [Deployment Guide](docs/DEPLOYMENT.md) | Infrastructure setup, CI/CD, and operations runbook |
+| [Contributing Guide](docs/CONTRIBUTING.md) | Developer setup, code standards, and PR process |
 
 ---
 
@@ -55,7 +57,38 @@ TradeLink Global is a B2B marketplace platform designed to facilitate secure and
 
 ## Getting Started
 
-> Developer setup guides and environment configuration will be added as the codebase matures. Refer to the [SDD](docs/SDD.md) for the current architecture and [Roadmap](docs/ROADMAP.md) for planned milestones.
+### Prerequisites
+
+- [Docker](https://docs.docker.com/get-docker/) 24.x or later
+- [Docker Compose](https://docs.docker.com/compose/) v2.x
+- [Node.js](https://nodejs.org/) 20 LTS (for local development without Docker)
+- [Git](https://git-scm.com/)
+
+### Quick Start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/addexdi/Tradelink.git
+cd Tradelink
+
+# 2. Set up environment variables
+cp .env.example .env
+# Edit .env and fill in required values
+
+# 3. Start all services
+docker compose up --build
+
+# 4. Apply database migrations
+docker compose exec api npm run migrate
+
+# 5. (Optional) Seed development data
+docker compose exec api npm run seed
+```
+
+The API will be available at `http://localhost:3000/api/v1`.
+
+For full developer setup instructions, code standards, and the PR process, see the [Contributing Guide](docs/CONTRIBUTING.md).  
+For infrastructure setup and CI/CD configuration, see the [Deployment Guide](docs/DEPLOYMENT.md).
 
 ---
 
